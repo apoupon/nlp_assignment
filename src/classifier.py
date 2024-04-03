@@ -45,8 +45,8 @@ class Classifier:
         '''
 
         # load csv files
-        df_train = pd.read_csv('data/traindata.csv', delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
-        df_dev = pd.read_csv('data/devdata.csv', delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
+        df_train = pd.read_csv(train_filename, delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
+        df_dev = pd.read_csv(dev_filename, delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
         pd.set_option("display.max_colwidth", None)
 
         # create a new data frame with 3 features: sentence, pseudo-sentence (<term> <aspect>) and label (polarity)
@@ -87,8 +87,7 @@ class Classifier:
         '''
 
         # load csv files
-        # TODO predict filename
-        df_predict = pd.read_csv('data/devdata.csv', delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
+        df_predict = pd.read_csv(predict_filename, delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
         pd.set_option("display.max_colwidth", None)
 
         # create a new data frame with 3 features: sentence, pseudo-sentence (<term> <aspect>) and label (polarity)
@@ -123,7 +122,7 @@ class Classifier:
 
         # Load the dataset
         # TODO link to path
-        dataset = self.preprocess('name','name')
+        dataset = self.preprocess(train_filename, dev_filename)
         
         # Tokenise the dataset
         tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
@@ -135,8 +134,8 @@ class Classifier:
         tokenized_datasets.set_format("torch")
 
         # Seperate the dataset
-        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42)
-        small_eval_dataset = tokenized_datasets["val"].shuffle(seed=42)
+        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(10))
+        small_eval_dataset = tokenized_datasets["val"].shuffle(seed=42).select(range(10))
 
 
         # Create the dataloader
@@ -211,7 +210,7 @@ class Classifier:
         """
 
         # Preprocess
-        dataset = self.preprocess_predict('name')
+        dataset = self.preprocess_predict(data_filename)
 
         # Tokenise the dataset
         tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
@@ -238,7 +237,6 @@ class Classifier:
                 outputs = model(**batch)
                 logits = outputs.logits.cpu()
                 pred = np.argmax(logits, axis=-1)
-                print('pred tensor:', pred)
                 pred = pred.detach().cpu().numpy()[0]
                 # Encode 0,1,2 as negative, neutral, positive
                 if pred == 0:
