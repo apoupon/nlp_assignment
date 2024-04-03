@@ -121,24 +121,24 @@ class Classifier:
         """
 
         # Load the dataset
-        # TODO link to path
         dataset = self.preprocess(train_filename, dev_filename)
         
         # Tokenise the dataset
         tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
 
         # Process the dataset
-        # TODO: Adapt to our dataset
         tokenized_datasets = tokenized_datasets.remove_columns(["sentence"])
         tokenized_datasets = tokenized_datasets.remove_columns(["pseudo_sentence"])
         tokenized_datasets.set_format("torch")
 
         # Seperate the dataset
+        # TODO: Remove the range!
         small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(10))
         small_eval_dataset = tokenized_datasets["val"].shuffle(seed=42).select(range(10))
 
 
         # Create the dataloader
+        # TODO : Change the batch size to 8
         train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=2)
         eval_dataloader = DataLoader(small_eval_dataset, batch_size=1)
 
