@@ -27,13 +27,11 @@ class Classifier:
         
         """
         self.tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
-        # TODO: change to 3 labels
         self.model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=3)
 
 
     # Helper functions:
     def tokenize_function(self, dataset):
-      # TODO: change to two inputs
       return self.tokenizer(dataset["sentence"], dataset["pseudo_sentence"] , padding="max_length", truncation=True)
     
     def compute_metrics(self, eval_pred):
@@ -199,8 +197,8 @@ class Classifier:
             # Print the avg accuracy for this epoch
             print(f"Epoch {epoch} mean accuracy: {np.mean(accuracies)}")
 
-
-
+        # Save the model to the class
+        self.model = model
 
 
 
@@ -214,6 +212,43 @@ class Classifier:
 
         # Preprocess
         dataset = self.preprocess_predict('name')
+
+        # Tokenise the dataset
+        tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
+
+        # Process the dataset
+        tokenized_datasets = tokenized_datasets.remove_columns(["sentence"])
+        tokenized_datasets = tokenized_datasets.remove_columns(["pseudo_sentence"])
+        tokenized_datasets.set_format("torch")
+
+        # Seperate the dataset
+        eval_dataloader = DataLoader(tokenized_datasets, batch_size=1)
+
+        # Get the model and move to device
+        model = self.model
+        model.to(device)
+        print('predicting on: ', device)
+
+        # Predict
+        model.eval()
+        predictions = []
+        with torch.no_grad():
+            for batch in tqdm(eval_dataloader):
+                batch = {k: v.to(device) for k, v in batch.items()}
+                outputs = model(**batch)
+                logits = outputs.logits.cpu()
+                pred = np.argmax(logits, axis=-1)
+                print('pred tensor:', pred)
+                pred = pred.detach().cpu().numpy()[0]
+                # Encode 0,1,2 as negative, neutral, positive
+                if pred == 0:
+                    predictions.append('negative')
+                elif pred == 1:
+                    predictions.append('neutral')
+                elif pred == 2:
+                    predictions.append('positive')
+
+        return predictions
 
 
 
