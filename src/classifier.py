@@ -1,7 +1,13 @@
 from typing import List
 
 import torch
-
+from datasets import load_dataset
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, get_scheduler
+import numpy as np
+from torch.utils.data import DataLoader
+from torch.optim import AdamW
+import sklearn
+from tqdm.auto import tqdm
 
 class Classifier:
     """
@@ -14,12 +20,25 @@ class Classifier:
 
     ############################################# complete the classifier class below
     
-    def __init__():
+    def __init__(self):
         """
         This should create and initilize the model. Does not take any arguments.
         
         """
+        self.tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+        # TODO: change to 3 labels
+        self.model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=5)
+
+
+    # Helper functions:
+    def tokenize_function(self, examples):
+      # TODO: change to two inputs
+      return self.tokenizer(examples["text"], padding="max_length", truncation=True)
     
+    def compute_metrics(self, eval_pred):
+      logits, labels = eval_pred
+      predictions = np.argmax(logits, axis=-1)
+      return {"accuracy": (predictions == labels).mean()}
     
     
     def train(self, train_filename: str, dev_filename: str, device: torch.device):
@@ -31,6 +50,70 @@ class Classifier:
           - DO NOT USE THE DEV DATA AS TRAINING EXAMPLES, YOU CAN USE THEM ONLY FOR THE OPTIMIZATION
          OF MODEL HYPERPARAMETERS
         """
+
+        # Load the dataset
+        dataset = load_dataset("yelp_review_full")
+        
+        # Tokenise the dataset
+        tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
+
+        # Process the dataset
+        # TODO: Adapt to our dataset
+        tokenized_datasets = tokenized_datasets.remove_columns(["text"])
+        tokenized_datasets = tokenized_datasets.rename_column("label", "labels")
+        tokenized_datasets.set_format("torch")
+
+        # Seperate the dataset
+        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(300))
+        small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(8))
+
+        # Create the dataloader
+        train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=8)
+        eval_dataloader = DataLoader(small_eval_dataset, batch_size=8)
+
+        # Get the model and move to device
+        model = self.model
+        model.to(device)
+        print('training on: ', device)
+
+
+        # Training setup
+        optimizer = AdamW(model.parameters(), lr=5e-5)
+        num_epochs = 3
+        num_training_steps = num_epochs * len(train_dataloader)
+        lr_scheduler = get_scheduler(
+            name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
+        )
+
+        # Let's train this BadBoy
+        progress_bar = tqdm(range(num_training_steps))
+
+        model.train()
+        for epoch in range(num_epochs):
+            for batch in train_dataloader:
+                batch = {k: v.to(device) for k, v in batch.items()}
+                outputs = model(**batch)
+                loss = outputs.loss
+                loss.backward()
+
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+                progress_bar.update(1)
+        
+            # Evaluate the model
+            model.eval()
+            with torch.no_grad():
+                eval_results = sklearn.metrics.classification_report(
+                    small_eval_dataset["labels"],
+                    np.argmax(model(**small_eval_dataset).logits, axis=-1),
+                    output_dict=True
+                )
+                print(eval_results)
+
+
+
+
 
 
     def predict(self, data_filename: str, device: torch.device) -> List[str]:
