@@ -6,7 +6,7 @@ from transformers import AutoTokenizer, AutoModelForSequenceClassification, get_
 import numpy as np
 from torch.utils.data import DataLoader
 from torch.optim import AdamW
-import sklearn
+from sklearn.metrics import classification_report
 from tqdm.auto import tqdm
 
 class Classifier:
@@ -64,12 +64,12 @@ class Classifier:
         tokenized_datasets.set_format("torch")
 
         # Seperate the dataset
-        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(300))
+        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(30))
         small_eval_dataset = tokenized_datasets["test"].shuffle(seed=42).select(range(8))
 
         # Create the dataloader
-        train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=8)
-        eval_dataloader = DataLoader(small_eval_dataset, batch_size=8)
+        train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=1)
+        eval_dataloader = DataLoader(small_eval_dataset, batch_size=1)
 
         # Get the model and move to device
         model = self.model
@@ -103,13 +103,22 @@ class Classifier:
         
             # Evaluate the model
             model.eval()
+            accuracies = []
             with torch.no_grad():
-                eval_results = sklearn.metrics.classification_report(
-                    small_eval_dataset["labels"],
-                    np.argmax(model(**small_eval_dataset).logits, axis=-1),
-                    output_dict=True
-                )
-                print(eval_results)
+                for batch in eval_dataloader:
+                    batch = {k: v.to(device) for k, v in batch.items()}
+                    outputs = model(**batch)
+                    loss = outputs.loss
+                    logits = outputs.logits.cpu()
+                    labels = batch["labels"].cpu()
+                    predictions = np.argmax(logits, axis=-1)
+                    if predictions == labels:
+                        accuracies.append(1)
+                    else:
+                        accuracies.append(0)
+            
+            # Print the avg accuracy for this epoch
+            print(f"Epoch {epoch} mean accuracy: {np.mean(accuracies)}")
 
 
 
