@@ -133,13 +133,13 @@ class Classifier:
 
         # Seperate the dataset
         # TODO: Remove the range!
-        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42).select(range(10))
-        small_eval_dataset = tokenized_datasets["val"].shuffle(seed=42).select(range(10))
+        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42)
+        small_eval_dataset = tokenized_datasets["val"].shuffle(seed=42)
 
 
         # Create the dataloader
         # TODO : Change the batch size to 8
-        train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=2)
+        train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=8)
         eval_dataloader = DataLoader(small_eval_dataset, batch_size=1)
 
         # Get the model and move to device
@@ -150,7 +150,7 @@ class Classifier:
 
         # Training setup
         optimizer = AdamW(model.parameters(), lr=5e-5)
-        num_epochs = 3
+        num_epochs = 2
         num_training_steps = num_epochs * len(train_dataloader)
         lr_scheduler = get_scheduler(
             name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
@@ -247,7 +247,3 @@ class Classifier:
                     predictions.append('positive')
 
         return predictions
-
-
-
-
