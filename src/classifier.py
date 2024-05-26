@@ -1,7 +1,14 @@
 from typing import List
 
 import torch
-
+from datasets import load_dataset, Dataset, DatasetDict
+from transformers import AutoTokenizer, AutoModelForSequenceClassification, get_scheduler
+import numpy as np
+from torch.utils.data import DataLoader
+from torch.optim import AdamW
+from sklearn.metrics import classification_report
+from tqdm.auto import tqdm
+import pandas as pd
 
 class Classifier:
     """
@@ -14,12 +21,93 @@ class Classifier:
 
     ############################################# complete the classifier class below
     
-    def __init__():
+    def __init__(self):
         """
         This should create and initilize the model. Does not take any arguments.
         
         """
+        self.tokenizer = AutoTokenizer.from_pretrained("bert-base-cased")
+        self.model = AutoModelForSequenceClassification.from_pretrained("bert-base-cased", num_labels=3)
+
+
+    # Helper functions:
+    def tokenize_function(self, dataset):
+      return self.tokenizer(dataset["sentence"], dataset["pseudo_sentence"] , padding="max_length", truncation=True)
     
+    def compute_metrics(self, eval_pred):
+      logits, labels = eval_pred
+      predictions = np.argmax(logits, axis=-1)
+      return {"accuracy": (predictions == labels).mean()}
+    
+    def preprocess(self, train_filename, dev_filename):
+        '''
+            Return processed dataset
+        '''
+
+        # load csv files
+        df_train = pd.read_csv(train_filename, delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
+        df_dev = pd.read_csv(dev_filename, delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
+        pd.set_option("display.max_colwidth", None)
+
+        # create a new data frame with 3 features: sentence, pseudo-sentence (<term> <aspect>) and label (polarity)
+        for row in df_train.itertuples():
+            df_train.at[row.Index, 'pseudo_sentence'] = row.term + ' ' + row.aspect
+            df_train = df_train[['sentence', 'pseudo_sentence', 'polarity']]
+            if row.polarity == 'negative':
+                df_train.at[row.Index, 'polarity'] = 0
+            elif row.polarity == 'neutral':
+                df_train.at[row.Index, 'polarity'] = 1
+            elif row.polarity == 'positive':
+                df_train.at[row.Index, 'polarity'] = 2
+        for row in df_dev.itertuples():
+            df_dev.at[row.Index, 'pseudo_sentence'] = row.term + ' ' + row.aspect
+            df_dev = df_dev[['sentence', 'pseudo_sentence', 'polarity']]
+            if row.polarity == 'negative':
+                df_dev.at[row.Index, 'polarity'] = 0
+            elif row.polarity == 'neutral':
+                df_dev.at[row.Index, 'polarity'] = 1
+            elif row.polarity == 'positive':
+                df_dev.at[row.Index, 'polarity'] = 2
+
+        df_train = df_train.rename(columns={'polarity': 'labels'})
+        df_dev = df_dev.rename(columns={'polarity': 'labels'})
+
+        # convert the data frame to a Dataset
+        train_dataset = Dataset.from_pandas(df_train)
+        dev_dataset = Dataset.from_pandas(df_dev)
+
+        # combine the train and dev datasets
+        sft_dataset = DatasetDict({'train': train_dataset, 'val': dev_dataset})
+
+        return sft_dataset
+    
+    def preprocess_predict(self, predict_filename):
+        '''
+            Return processed dataset
+        '''
+
+        # load csv files
+        df_predict = pd.read_csv(predict_filename, delimiter='\t', names=['polarity', 'aspect', 'term', 'term_pos', 'sentence'])
+        pd.set_option("display.max_colwidth", None)
+
+        # create a new data frame with 3 features: sentence, pseudo-sentence (<term> <aspect>) and label (polarity)
+        for row in df_predict.itertuples():
+            df_predict.at[row.Index, 'pseudo_sentence'] = row.term + ' ' + row.aspect
+            df_predict = df_predict[['sentence', 'pseudo_sentence', 'polarity']]
+            if row.polarity == 'negative':
+                df_predict.at[row.Index, 'polarity'] = 0
+            elif row.polarity == 'neutral':
+                df_predict.at[row.Index, 'polarity'] = 1
+            elif row.polarity == 'positive':
+                df_predict.at[row.Index, 'polarity'] = 2
+
+        df_predict = df_predict.rename(columns={'polarity': 'labels'})
+
+        # convert the data frame to a Dataset
+        predict_dataset = Dataset.from_pandas(df_predict)
+
+        return predict_dataset
+  
     
     
     def train(self, train_filename: str, dev_filename: str, device: torch.device):
@@ -32,6 +120,86 @@ class Classifier:
          OF MODEL HYPERPARAMETERS
         """
 
+        # Load the dataset
+        dataset = self.preprocess(train_filename, dev_filename)
+        
+        # Tokenise the dataset
+        tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
+
+        # Process the dataset
+        tokenized_datasets = tokenized_datasets.remove_columns(["sentence"])
+        tokenized_datasets = tokenized_datasets.remove_columns(["pseudo_sentence"])
+        tokenized_datasets.set_format("torch")
+
+        # Seperate the dataset
+        # TODO: Remove the range!
+        small_train_dataset = tokenized_datasets["train"].shuffle(seed=42)
+        small_eval_dataset = tokenized_datasets["val"].shuffle(seed=42)
+
+
+        # Create the dataloader
+        # TODO : Change the batch size to 8
+        train_dataloader = DataLoader(small_train_dataset, shuffle=True, batch_size=8)
+        eval_dataloader = DataLoader(small_eval_dataset, batch_size=1)
+
+        # Get the model and move to device
+        model = self.model
+        model.to(device)
+        print('training on: ', device)
+
+
+        # Training setup
+        optimizer = AdamW(model.parameters(), lr=5e-5)
+        num_epochs = 2
+        num_training_steps = num_epochs * len(train_dataloader)
+        lr_scheduler = get_scheduler(
+            name="linear", optimizer=optimizer, num_warmup_steps=0, num_training_steps=num_training_steps
+        )
+
+        # Let's train this BadBoy
+        progress_bar = tqdm(range(num_training_steps))
+
+        model.train()
+        for epoch in range(num_epochs):
+            loss_list = []
+            for idx, batch in enumerate(train_dataloader):
+                batch = {k: v.to(device) for k, v in batch.items()}
+                outputs = model(**batch)
+                loss = outputs.loss
+                loss.backward()
+                optimizer.step()
+                lr_scheduler.step()
+                optimizer.zero_grad()
+                progress_bar.update(1)
+                loss_list.append(loss.item())
+
+                if idx % 50 == 0:
+                    print(f"Epoch {epoch} loss: {np.mean(loss_list)}")
+                    loss_list = []
+        
+            # Evaluate the model
+            model.eval()
+            accuracies = []
+            with torch.no_grad():
+                for batch in eval_dataloader:
+                    batch = {k: v.to(device) for k, v in batch.items()}
+                    outputs = model(**batch)
+                    loss = outputs.loss
+                    logits = outputs.logits.cpu()
+                    labels = batch["labels"].cpu()
+                    predictions = np.argmax(logits, axis=-1)
+                    if predictions == labels:
+                        accuracies.append(1)
+                    else:
+                        accuracies.append(0)
+            
+            # Print the avg accuracy for this epoch
+            print(f"Epoch {epoch} mean accuracy: {np.mean(accuracies)}")
+
+        # Save the model to the class
+        self.model = model
+
+
 
     def predict(self, data_filename: str, device: torch.device) -> List[str]:
         """Predicts class labels for the input instances in file 'datafile'
@@ -41,7 +209,41 @@ class Classifier:
           - PUT THE MODEL and DATA on the specified device! Do not use another device
         """
 
+        # Preprocess
+        dataset = self.preprocess_predict(data_filename)
 
+        # Tokenise the dataset
+        tokenized_datasets = dataset.map(self.tokenize_function, batched=True)
 
+        # Process the dataset
+        tokenized_datasets = tokenized_datasets.remove_columns(["sentence"])
+        tokenized_datasets = tokenized_datasets.remove_columns(["pseudo_sentence"])
+        tokenized_datasets.set_format("torch")
 
+        # Seperate the dataset
+        eval_dataloader = DataLoader(tokenized_datasets, batch_size=1)
 
+        # Get the model and move to device
+        model = self.model
+        model.to(device)
+        print('predicting on: ', device)
+
+        # Predict
+        model.eval()
+        predictions = []
+        with torch.no_grad():
+            for batch in tqdm(eval_dataloader):
+                batch = {k: v.to(device) for k, v in batch.items()}
+                outputs = model(**batch)
+                logits = outputs.logits.cpu()
+                pred = np.argmax(logits, axis=-1)
+                pred = pred.detach().cpu().numpy()[0]
+                # Encode 0,1,2 as negative, neutral, positive
+                if pred == 0:
+                    predictions.append('negative')
+                elif pred == 1:
+                    predictions.append('neutral')
+                elif pred == 2:
+                    predictions.append('positive')
+
+        return predictions
