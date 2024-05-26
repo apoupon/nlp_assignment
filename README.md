@@ -31,7 +31,6 @@ We will give a two-fold input to BERT consisting of the review: Wait staff is bl
 Accuracy on the dev dataset: **0.84** after the second epoch
 
 ## References
-
 [1] Sun, C., Huang, L., & Qiu, X. (2019). Utilizing BERT for aspect-based sentiment analysis via constructing auxiliary sentence. arXiv preprint arXiv:1903.09588.
 [2] Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2018). Bert: Pre-training of deep bidirectional transformers for language understanding. arXiv preprint arXiv:1810.04805.
 
