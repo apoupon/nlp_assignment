@@ -1,16 +1,5 @@
 # Aspect-Term Polarity Classification in Sentiment Analysis
 
-To install dependencies, run the following command:
-
-```bash
-pip install -r requirements.txt
-```
-
-To train and test the model, run:
-```bash
-python src/tester.py
-```
-
 This project was carried out as part of the NLP course at CentraleSupélec. The working group was made up of Antoine Poupon, Olav de Clerk and Hugo de Rohan Willner.
 
 The goal of this assignment is to implement a model that predicts opinion polarities (positive, negative or neutral) for given aspect terms in sentences. The model takes as input 3 elements: a sentence, a term occurring in the sentence, and its aspect category. For each input triple, it produces a polarity label: positive, negative or neutral.
@@ -45,3 +34,15 @@ Accuracy on the dev dataset: **0.84** after the second epoch
 
 [1] Sun, C., Huang, L., & Qiu, X. (2019). Utilizing BERT for aspect-based sentiment analysis via constructing auxiliary sentence. arXiv preprint arXiv:1903.09588.
 [2] Devlin, J., Chang, M. W., Lee, K., & Toutanova, K. (2018). Bert: Pre-training of deep bidirectional transformers for language understanding. arXiv preprint arXiv:1810.04805.
+
+## Reproducing results
+To install dependencies, run the following command:
+
+```bash
+pip install -r requirements.txt
+```
+
+To train and test the model, run:
+```bash
+python src/tester.py
+```
